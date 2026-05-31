@@ -32,22 +32,37 @@ export function BridgeScrollFullscreen() {
       setImagesLoaded(true);
       return;
     }
-    
-    let loadedCount = 0;
-    const images: HTMLImageElement[] = [];
-    
-    for (let i = 1; i <= TOTAL_FRAMES; i++) {
-      const img = new Image();
-      img.src = getFramePath(i);
-      img.onload = () => {
-        loadedCount++;
-        if (loadedCount === TOTAL_FRAMES) {
-          imagesRef.current = images;
-          setImagesLoaded(true);
-        }
-      };
-      images.push(img);
-    }
+
+    let cancelled = false;
+    const images: HTMLImageElement[] = new Array(TOTAL_FRAMES);
+    const BATCH_SIZE = 8;
+
+    const loadImage = (index: number): Promise<void> =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.src = getFramePath(index + 1);
+        images[index] = img;
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+      });
+
+    const loadAll = async () => {
+      for (let i = 0; i < TOTAL_FRAMES; i += BATCH_SIZE) {
+        if (cancelled) return;
+        const batch = Array.from(
+          { length: Math.min(BATCH_SIZE, TOTAL_FRAMES - i) },
+          (_, j) => loadImage(i + j)
+        );
+        await Promise.all(batch);
+      }
+      if (!cancelled) {
+        imagesRef.current = images;
+        setImagesLoaded(true);
+      }
+    };
+
+    loadAll();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
